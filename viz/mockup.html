@@ -1,0 +1,1074 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>html{color-scheme:light dark}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Paged Attention Scope</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#EFF3F4; --panel:#FFFFFF; --panel-2:#F6F9FA; --sunken:#E4EBEE;
+  --ink:#131A1E; --ink-2:#425058; --ink-3:#6E7F88;
+  --line:#D6DFE3; --line-2:#C2CED4;
+  --accent:#1F6C86; --accent-soft:#D6E8EE;
+  --danger:#B23B34; --danger-soft:#F6DEDB;
+  --hit:#26795D; --hit-soft:#D7EBE3;
+  --free:#CBD6DA;
+  --seq0:#3F74B8; --seq1:#C57E22; --seq2:#7E60BD; --seq3:#1F8C7C;
+  --seq4:#B85462; --seq5:#6B8A2E;
+  --shadow:0 1px 2px rgba(19,26,30,.07), 0 6px 18px -10px rgba(19,26,30,.25);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1418; --panel:#161D22; --panel-2:#1A2329; --sunken:#0A1013;
+    --ink:#E6EDF0; --ink-2:#A3B3BC; --ink-3:#72858F;
+    --line:#26323A; --line-2:#33424B;
+    --accent:#4FB3D0; --accent-soft:#12303B;
+    --danger:#E0726A; --danger-soft:#3A1E1B;
+    --hit:#4FC29A; --hit-soft:#102E26;
+    --free:#2A363D;
+    --seq0:#6A9EE0; --seq1:#E2A44C; --seq2:#A88BE0; --seq3:#3FB8A5;
+    --seq4:#E0808E; --seq5:#9DBE55;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1418; --panel:#161D22; --panel-2:#1A2329; --sunken:#0A1013;
+  --ink:#E6EDF0; --ink-2:#A3B3BC; --ink-3:#72858F;
+  --line:#26323A; --line-2:#33424B;
+  --accent:#4FB3D0; --accent-soft:#12303B;
+  --danger:#E0726A; --danger-soft:#3A1E1B;
+  --hit:#4FC29A; --hit-soft:#102E26;
+  --free:#2A363D;
+  --seq0:#6A9EE0; --seq1:#E2A44C; --seq2:#A88BE0; --seq3:#3FB8A5;
+  --seq4:#E0808E; --seq5:#9DBE55;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,sans-serif;
+  font-size:13px; line-height:1.5;
+  padding:16px; display:flex; flex-direction:column; gap:12px;
+  max-width:1560px; margin:0 auto;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace; font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:Archivo,system-ui,sans-serif; margin:0; text-wrap:balance}
+
+/* ---------- masthead ---------- */
+.masthead{display:flex; align-items:baseline; gap:14px; flex-wrap:wrap}
+.masthead h1{font-size:19px; font-weight:700; letter-spacing:-.015em}
+.masthead .sub{color:var(--ink-3); font-size:12px}
+.masthead .repo{margin-left:auto; font-size:11px; color:var(--ink-3)}
+
+/* ---------- panels ---------- */
+.panel{background:var(--panel); border:1px solid var(--line); border-radius:6px}
+.panel-hd{
+  display:flex; align-items:center; gap:10px;
+  padding:8px 12px; border-bottom:1px solid var(--line);
+}
+.panel-hd h2{
+  font-size:10.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-2);
+}
+.panel-hd .src{
+  margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--ink-3);
+}
+.panel-bd{padding:12px}
+
+/* ---------- transport ---------- */
+.transport{
+  display:flex; align-items:center; gap:12px; padding:9px 12px;
+  background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  box-shadow:var(--shadow); flex-wrap:wrap;
+}
+button{font:inherit; color:inherit; cursor:pointer}
+.tbtn{
+  background:var(--panel-2); border:1px solid var(--line-2); border-radius:4px;
+  width:30px; height:28px; display:grid; place-items:center; padding:0;
+}
+.tbtn:hover{background:var(--accent-soft); border-color:var(--accent)}
+.tbtn svg{width:13px; height:13px; fill:currentColor}
+.tbtn.play{width:38px; background:var(--accent); border-color:var(--accent); color:#fff}
+:root[data-theme="dark"] .tbtn.play,
+:root:not([data-theme="light"]) .tbtn.play{color:#08161B}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .tbtn.play{color:#fff}}
+.tbtn.play:hover{filter:brightness(1.08)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+.stepread{font-family:"IBM Plex Mono",monospace; font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap}
+.stepread b{font-size:15px; font-weight:600}
+.stepread span{color:var(--ink-3)}
+
+input[type=range]{
+  flex:1; min-width:200px; accent-color:var(--accent); height:20px;
+}
+.speeds{display:flex; border:1px solid var(--line-2); border-radius:4px; overflow:hidden}
+.speeds button{
+  background:var(--panel-2); border:0; border-left:1px solid var(--line-2);
+  padding:5px 7px; font-family:"IBM Plex Mono",monospace; font-size:11px;
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.speeds button:first-child{border-left:0}
+.speeds button[aria-pressed=true]{background:var(--accent); color:#fff}
+:root[data-theme="dark"] .speeds button[aria-pressed=true]{color:#08161B}
+select{
+  font:inherit; background:var(--panel-2); color:var(--ink);
+  border:1px solid var(--line-2); border-radius:4px; padding:5px 8px; font-size:12px;
+}
+.phase{
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+  letter-spacing:.07em; padding:3px 8px; border-radius:3px; text-transform:uppercase;
+}
+.phase.prefill{background:var(--accent-soft); color:var(--accent)}
+.phase.decode{background:var(--sunken); color:var(--ink-2)}
+
+/* ---------- scenario note ---------- */
+.scenario-note{
+  font-size:12px; color:var(--ink-2); padding:0 2px;
+  display:flex; gap:8px; align-items:baseline;
+}
+.scenario-note em{color:var(--ink); font-style:normal; font-weight:500}
+
+/* ---------- metrics ---------- */
+.metrics{display:grid; grid-template-columns:repeat(6,1fr); gap:1px; background:var(--line);
+  border:1px solid var(--line); border-radius:6px; overflow:hidden}
+.metric{background:var(--panel); padding:9px 12px; display:flex; flex-direction:column; gap:3px}
+.metric .k{font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3); font-weight:600}
+.metric .v{font-family:"IBM Plex Mono",monospace; font-size:17px; font-weight:500; font-variant-numeric:tabular-nums; line-height:1.15}
+.metric .v small{font-size:11px; color:var(--ink-3); font-weight:400}
+.meter{height:3px; background:var(--sunken); border-radius:2px; overflow:hidden; margin-top:3px}
+.meter i{display:block; height:100%; background:var(--accent); transition:width .18s ease}
+.meter i.warn{background:var(--danger)}
+.metric.alert .v{color:var(--danger)}
+
+/* ---------- why banner ---------- */
+.why{
+  display:flex; align-items:center; gap:9px; min-height:34px;
+  padding:7px 12px; border-radius:5px; font-size:12.5px;
+  border:1px solid var(--line); background:var(--panel); color:var(--ink-2);
+}
+.why .tag{
+  font-family:"IBM Plex Mono",monospace; font-size:9.5px; font-weight:600; letter-spacing:.08em;
+  text-transform:uppercase; padding:2px 6px; border-radius:3px;
+  background:var(--sunken); color:var(--ink-3); flex:none;
+}
+.why.block{border-color:var(--line-2); background:var(--panel-2)}
+.why.block .tag{background:var(--accent-soft); color:var(--accent)}
+.why.evict{border-color:var(--danger); background:var(--danger-soft); color:var(--danger)}
+.why.evict .tag{background:var(--danger); color:#fff}
+.why.hit{border-color:var(--hit); background:var(--hit-soft); color:var(--hit)}
+.why.hit .tag{background:var(--hit); color:#fff}
+.why .mono{font-weight:500}
+
+/* ---------- main grid ---------- */
+.stage{display:grid; grid-template-columns:minmax(330px,1fr) minmax(430px,1.35fr); gap:12px; align-items:start}
+@media (max-width:1080px){.stage{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(3,1fr)}}
+
+/* ---------- batch bar ---------- */
+.budgetbar{
+  display:flex; height:30px; background:var(--sunken); border-radius:4px;
+  overflow:hidden; border:1px solid var(--line);
+}
+.budgetbar .slab{
+  display:grid; place-items:center; font-family:"IBM Plex Mono",monospace;
+  font-size:10.5px; font-weight:600; color:#fff; min-width:0; overflow:hidden;
+  transition:flex-grow .2s ease;
+}
+.budgetbar .slab.chunked{
+  background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.28) 0 4px,transparent 4px 8px);
+}
+.budget-legend{
+  display:flex; justify-content:space-between; font-family:"IBM Plex Mono",monospace;
+  font-size:10px; color:var(--ink-3); margin-top:5px;
+}
+.batch-rows{display:flex; flex-direction:column; gap:4px; margin-top:10px}
+.brow{display:flex; align-items:center; gap:8px; font-family:"IBM Plex Mono",monospace; font-size:11px}
+.brow .sw{width:9px; height:9px; border-radius:2px; flex:none}
+.brow .nm{width:44px; color:var(--ink-2)}
+.brow .kind{
+  font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; padding:1px 5px;
+  border-radius:3px; background:var(--sunken); color:var(--ink-3);
+}
+.brow .kind.chunk{background:var(--accent-soft); color:var(--accent)}
+.brow .n{margin-left:auto; color:var(--ink)}
+.empty{color:var(--ink-3); font-size:11.5px; font-style:italic; padding:4px 0}
+
+/* ---------- page table ---------- */
+.ptable{display:flex; flex-direction:column; gap:3px; max-height:196px; overflow-y:auto}
+.prow{
+  display:grid; grid-template-columns:34px 14px 52px 1fr; align-items:center; gap:7px;
+  font-family:"IBM Plex Mono",monospace; font-size:11px;
+  padding:3px 6px; border-radius:3px; background:var(--panel-2);
+}
+.prow:hover{background:var(--sunken)}
+.prow .lg{color:var(--ink-3)}
+.prow .ar{color:var(--ink-3); text-align:center}
+.prow .ph{font-weight:600}
+.prow .meta{font-size:10px; color:var(--ink-3); text-align:right}
+.prow .meta .shared{color:var(--hit); font-weight:600}
+.prow.filling{background:var(--accent-soft)}
+.seqpick{display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px}
+.chip{
+  display:flex; align-items:center; gap:5px; padding:3px 8px 3px 6px;
+  border:1px solid var(--line-2); border-radius:12px; background:var(--panel-2);
+  font-family:"IBM Plex Mono",monospace; font-size:10.5px;
+}
+.chip .sw{width:8px; height:8px; border-radius:50%}
+.chip[aria-pressed=true]{border-color:var(--ink-2); background:var(--sunken); font-weight:600}
+.chip.gone{opacity:.42}
+
+/* ---------- pool grid ---------- */
+#pool{width:100%; height:auto; display:block}
+.cell-body{transition:fill .16s ease}
+.poolfoot{
+  display:flex; gap:14px; flex-wrap:wrap; margin-top:10px; padding-top:9px;
+  border-top:1px solid var(--line); font-size:10.5px; color:var(--ink-3);
+}
+.poolfoot span{display:flex; align-items:center; gap:5px}
+.poolfoot i{width:11px; height:11px; border-radius:2px; display:block; border:1px solid var(--line-2)}
+.hatch{background-image:repeating-linear-gradient(45deg,var(--hit) 0 2px,transparent 2px 4px); background-color:var(--panel-2)}
+
+/* ---------- inspector ---------- */
+.inspector{
+  margin-top:10px; padding:9px 11px; border:1px dashed var(--line-2); border-radius:5px;
+  background:var(--panel-2); font-family:"IBM Plex Mono",monospace; font-size:11px;
+  display:grid; grid-template-columns:auto 1fr; gap:3px 12px; align-items:baseline;
+}
+.inspector dt{color:var(--ink-3); font-size:10px; letter-spacing:.05em; text-transform:uppercase}
+.inspector dd{margin:0; overflow-wrap:anywhere}
+
+/* ---------- timeline ---------- */
+.tl-wrap{position:relative}
+#timeline{width:100%; display:block; cursor:crosshair}
+.tl-legend{
+  display:flex; gap:14px; flex-wrap:wrap; margin-top:9px; padding-top:9px;
+  border-top:1px solid var(--line); font-size:10.5px; color:var(--ink-3);
+}
+.tl-legend span{display:flex; align-items:center; gap:5px}
+.tl-legend i{width:16px; height:9px; border-radius:2px; display:block}
+.i-wait{background:var(--free)}
+.i-pre{background-image:repeating-linear-gradient(45deg,var(--ink-3) 0 3px,transparent 3px 6px); background-color:var(--sunken)}
+.i-dec{background:var(--ink-2)}
+.i-evict{background:var(--danger)}
+
+footer{
+  color:var(--ink-3); font-size:11px; padding:2px 2px 10px;
+  display:flex; gap:8px; flex-wrap:wrap; align-items:baseline;
+}
+footer code{font-family:"IBM Plex Mono",monospace; color:var(--ink-2)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="masthead">
+  <h1>Paged Attention Scope</h1>
+  <div class="sub">A step-debugger for the nano-vllm scheduler &amp; KV block manager</div>
+  <div class="repo mono">mockup · traces generated by a JS port of scheduler.py</div>
+</div>
+
+<div class="transport">
+  <button class="tbtn" id="bFirst" title="First step" aria-label="First step"><svg viewBox="0 0 16 16"><path d="M4 3h2v10H4zM13 3v10L6 8z"/></svg></button>
+  <button class="tbtn" id="bPrev" title="Previous step" aria-label="Previous step"><svg viewBox="0 0 16 16"><path d="M11 3v10L4 8z"/></svg></button>
+  <button class="tbtn play" id="bPlay" title="Play / pause" aria-label="Play or pause"><svg id="playIcon" viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z"/></svg></button>
+  <button class="tbtn" id="bNext" title="Next step" aria-label="Next step"><svg viewBox="0 0 16 16"><path d="M5 3l7 5-7 5z"/></svg></button>
+  <button class="tbtn" id="bLast" title="Last step" aria-label="Last step"><svg viewBox="0 0 16 16"><path d="M10 3h2v10h-2zM3 3v10l7-5z"/></svg></button>
+
+  <div class="stepread">step <b id="stepNow">0</b><span id="stepTot">/0</span></div>
+  <span class="phase decode" id="phasePill">decode</span>
+  <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Scrub through engine steps">
+  <div class="speeds" role="group" aria-label="Playback speed">
+    <button data-sp="960" aria-pressed="false">.25×</button>
+    <button data-sp="480" aria-pressed="false">.5×</button>
+    <button data-sp="240" aria-pressed="true">1×</button>
+    <button data-sp="70" aria-pressed="false">4×</button>
+    <button data-sp="20" aria-pressed="false">16×</button>
+  </div>
+  <select id="scenario" aria-label="Scenario"></select>
+</div>
+
+<div class="scenario-note"><em id="scnTitle"></em><span id="scnDesc"></span></div>
+
+<div class="metrics" id="metrics">
+  <div class="metric"><div class="k">KV pool</div><div class="v" id="mKv">—</div><div class="meter"><i id="mKvBar" style="width:0"></i></div></div>
+  <div class="metric"><div class="k">Prefix reuse</div><div class="v" id="mHit">—</div><div class="meter"><i id="mHitBar" style="width:0;background:var(--hit)"></i></div></div>
+  <div class="metric"><div class="k">Running</div><div class="v" id="mRun">—</div></div>
+  <div class="metric"><div class="k">Waiting</div><div class="v" id="mWait">—</div></div>
+  <div class="metric" id="mPreWrap"><div class="k">Preemptions</div><div class="v" id="mPre">—</div></div>
+  <div class="metric"><div class="k">Batch tokens</div><div class="v" id="mTok">—</div></div>
+</div>
+
+<div class="why" id="why"><span class="tag">idle</span><span id="whyText">Press play to run the trace.</span></div>
+
+<div class="stage">
+  <div style="display:flex;flex-direction:column;gap:12px">
+
+    <section class="panel">
+      <div class="panel-hd"><h2>Batch composition</h2><div class="src">scheduler.schedule()</div></div>
+      <div class="panel-bd">
+        <div class="budgetbar" id="budgetBar"></div>
+        <div class="budget-legend"><span id="budUsed" class="mono">0 tok</span><span id="budCap" class="mono">budget 0</span></div>
+        <div class="batch-rows" id="batchRows"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-hd"><h2>Block table · logical → physical</h2><div class="src">seq.block_table</div></div>
+      <div class="panel-bd">
+        <div class="seqpick" id="seqPick"></div>
+        <div class="ptable" id="ptable"></div>
+      </div>
+    </section>
+  </div>
+
+  <section class="panel">
+    <div class="panel-hd"><h2>KV cache pool</h2><div class="src" id="poolSrc">BlockManager</div></div>
+    <div class="panel-bd">
+      <svg id="pool" role="img" aria-label="KV cache block pool"></svg>
+      <div class="poolfoot">
+        <span><i style="background:var(--free)"></i>free</span>
+        <span><i style="background:var(--seq0)"></i>owned (hue = sequence)</span>
+        <span><i class="hatch"></i>shared · ref_count &gt; 1</span>
+        <span><i style="background:var(--panel-2);border-style:dashed"></i>allocated, not yet hashed</span>
+      </div>
+      <dl class="inspector" id="inspector">
+        <dt>block</dt><dd id="iId">—</dd>
+        <dt>ref_count</dt><dd id="iRef">—</dd>
+        <dt>owners</dt><dd id="iOwn">—</dd>
+        <dt>tokens</dt><dd id="iTok">click a block to inspect</dd>
+      </dl>
+    </div>
+  </section>
+</div>
+
+<section class="panel tl-wrap">
+  <div class="panel-hd"><h2>Continuous batching timeline</h2><div class="src">one row per sequence · x = engine step · click to seek</div></div>
+  <div class="panel-bd">
+    <canvas id="timeline"></canvas>
+    <div class="tl-legend">
+      <span><i class="i-wait"></i>queued</span>
+      <span><i class="i-pre"></i>prefill</span>
+      <span><i class="i-dec"></i>decode</span>
+      <span><i class="i-evict"></i>preempted &amp; requeued</span>
+      <span style="margin-left:auto">rows appear mid-flight — no batch ever drains before the next request joins</span>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <span>Mockup for the visualization layer.</span>
+  <code>block_size = 4</code><span>·</span>
+  <code>tiny pool so the pressure is visible</code><span>·</span>
+  <span>the real engine runs 256-token blocks and thousands of them.</span>
+</footer>
+
+<script>
+"use strict";
+
+/* ========================================================================
+   JS port of nanovllm/engine/{block_manager,scheduler}.py
+   Faithful to the control flow so the trace shows real behaviour.
+   ===================================================================== */
+
+const hashOf = (tokens, prefix) => prefix + "|" + tokens.join(".");
+const sameTokens = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+
+class Blk {
+  constructor(id){ this.id = id; this.ref = 0; this.hash = null; this.tokens = []; }
+  reset(){ this.ref = 1; this.hash = null; this.tokens = []; }
+}
+
+class BlockManager {
+  constructor(numBlocks, blockSize){
+    this.blockSize = blockSize;
+    this.blocks = Array.from({length:numBlocks}, (_, i) => new Blk(i));
+    this.hashToId = new Map();
+    this.free = Array.from({length:numBlocks}, (_, i) => i);
+    this.used = new Set();
+    this.reusedTokens = 0;
+  }
+  _alloc(){
+    const id = this.free.shift();
+    const b = this.blocks[id];
+    if (b.hash !== null && this.hashToId.get(b.hash) === id) this.hashToId.delete(b.hash);
+    b.reset();
+    this.used.add(id);
+    return id;
+  }
+  _free(id){ this.used.delete(id); this.free.push(id); }
+
+  canAllocate(seq){
+    let h = "-", cached = 0, need = seq.numBlocks;
+    for (let i = 0; i < seq.numBlocks - 1; i++){
+      const t = seq.block(i);
+      h = hashOf(t, h);
+      const id = this.hashToId.get(h);
+      if (id === undefined || !sameTokens(this.blocks[id].tokens, t)) break;
+      cached++;
+      if (this.used.has(id)) need--;
+    }
+    return this.free.length < need ? -1 : cached;
+  }
+  allocate(seq, cached){
+    let h = "-";
+    for (let i = 0; i < cached; i++){
+      const t = seq.block(i);
+      h = hashOf(t, h);
+      const id = this.hashToId.get(h);
+      const b = this.blocks[id];
+      if (this.used.has(id)) { b.ref++; }
+      else { b.ref = 1; this.free.splice(this.free.indexOf(id), 1); this.used.add(id); }
+      seq.blockTable.push(id);
+    }
+    for (let i = cached; i < seq.numBlocks; i++) seq.blockTable.push(this._alloc());
+    seq.numCachedTokens = cached * this.blockSize;
+    this.reusedTokens += cached * this.blockSize;
+    return cached;
+  }
+  deallocate(seq){
+    for (let i = seq.blockTable.length - 1; i >= 0; i--){
+      const b = this.blocks[seq.blockTable[i]];
+      b.ref--;
+      if (b.ref === 0) this._free(b.id);
+    }
+    seq.numCachedTokens = 0;
+    seq.blockTable = [];
+  }
+  canAppend(seq){ return this.free.length >= (seq.numTokens % this.blockSize === 1 ? 1 : 0); }
+  mayAppend(seq){ if (seq.numTokens % this.blockSize === 1) seq.blockTable.push(this._alloc()); }
+  hashBlocks(seq){
+    const s = Math.floor(seq.numCachedTokens / this.blockSize);
+    const e = Math.floor((seq.numCachedTokens + seq.numScheduledTokens) / this.blockSize);
+    if (s === e) return;
+    let h = s > 0 ? this.blocks[seq.blockTable[s-1]].hash : "-";
+    for (let i = s; i < e; i++){
+      const b = this.blocks[seq.blockTable[i]];
+      const t = seq.block(i);
+      h = hashOf(t, h);
+      b.hash = h; b.tokens = t;
+      this.hashToId.set(h, b.id);
+    }
+  }
+}
+
+class Seq {
+  constructor(id, prompt, maxTokens, arrival, blockSize){
+    this.id = id; this.tokenIds = prompt.slice();
+    this.numPromptTokens = prompt.length; this.numTokens = prompt.length;
+    this.numCachedTokens = 0; this.numScheduledTokens = 0;
+    this.isPrefill = true; this.blockTable = [];
+    this.maxTokens = maxTokens; this.arrival = arrival;
+    this.status = "waiting"; this.bs = blockSize;
+  }
+  get numBlocks(){ return Math.ceil(this.numTokens / this.bs); }
+  get numCompletion(){ return this.numTokens - this.numPromptTokens; }
+  block(i){ return this.tokenIds.slice(i * this.bs, (i + 1) * this.bs); }
+}
+
+class Scheduler {
+  constructor(cfg){
+    this.cfg = cfg;
+    this.bm = new BlockManager(cfg.numBlocks, cfg.blockSize);
+    this.waiting = []; this.running = [];
+    this.preemptions = 0;
+  }
+  add(seq){ this.waiting.push(seq); }
+  isFinished(){ return !this.waiting.length && !this.running.length; }
+
+  schedule(){
+    const scheduled = [], notes = [];
+    let batched = 0, cacheHits = 0, chunkedIds = new Set();
+
+    while (this.waiting.length && scheduled.length < this.cfg.maxNumSeqs){
+      const seq = this.waiting[0];
+      const remaining = this.cfg.maxNumBatchedTokens - batched;
+      if (remaining === 0){ notes.push({k:"budget", seq:seq.id}); break; }
+      let cached = 0, numTokens;
+      if (!seq.blockTable.length){
+        cached = this.bm.canAllocate(seq);
+        if (cached === -1){
+          notes.push({k:"blocks", seq:seq.id, need:seq.numBlocks, free:this.bm.free.length});
+          break;
+        }
+        numTokens = seq.numTokens - cached * this.cfg.blockSize;
+      } else {
+        numTokens = seq.numTokens - seq.numCachedTokens;
+      }
+      if (remaining < numTokens && scheduled.length){
+        notes.push({k:"budget", seq:seq.id, want:numTokens, left:remaining});
+        break;
+      }
+      if (!seq.blockTable.length){
+        const got = this.bm.allocate(seq, cached);
+        if (got > 0){ cacheHits += got; notes.push({k:"hit", seq:seq.id, blocks:got}); }
+      }
+      seq.numScheduledTokens = Math.min(numTokens, remaining);
+      if (seq.numScheduledTokens < numTokens){
+        chunkedIds.add(seq.id);
+        notes.push({k:"chunk", seq:seq.id, took:seq.numScheduledTokens, of:numTokens});
+      }
+      batched += seq.numScheduledTokens;
+      if (seq.numCachedTokens + seq.numScheduledTokens === seq.numTokens){
+        seq.status = "running"; this.waiting.shift(); this.running.push(seq);
+      }
+      scheduled.push(seq);
+    }
+    if (scheduled.length) return {seqs:scheduled, isPrefill:true, notes, chunkedIds};
+
+    const evicted = [];
+    while (this.running.length && scheduled.length < this.cfg.maxNumSeqs){
+      const seq = this.running.shift();
+      let ok = true;
+      while (!this.bm.canAppend(seq)){
+        if (this.running.length){ const v = this.running.pop(); this.preempt(v); evicted.push(v.id); }
+        else { this.preempt(seq); evicted.push(seq.id); ok = false; break; }
+      }
+      if (ok){
+        seq.numScheduledTokens = 1; seq.isPrefill = false;
+        this.bm.mayAppend(seq); scheduled.push(seq);
+      }
+    }
+    this.running.unshift(...scheduled);
+    evicted.forEach(id => notes.push({k:"evict", seq:id}));
+    return {seqs:scheduled, isPrefill:false, notes, chunkedIds};
+  }
+
+  preempt(seq){
+    seq.status = "waiting"; seq.isPrefill = true;
+    this.bm.deallocate(seq);
+    this.waiting.unshift(seq);
+    this.preemptions++;
+  }
+
+  postprocess(seqs, tokens, isPrefill){
+    const finished = [];
+    seqs.forEach((seq, i) => {
+      this.bm.hashBlocks(seq);
+      seq.numCachedTokens += seq.numScheduledTokens;
+      seq.numScheduledTokens = 0;
+      if (isPrefill && seq.numCachedTokens < seq.numTokens) return;
+      seq.tokenIds.push(tokens[i]); seq.numTokens++;
+      if (seq.numCompletion === seq.maxTokens){
+        seq.status = "finished";
+        this.bm.deallocate(seq);
+        this.running.splice(this.running.indexOf(seq), 1);
+        finished.push(seq.id);
+      }
+    });
+    return finished;
+  }
+}
+
+/* ========================================================================
+   Scenarios
+   ===================================================================== */
+
+let rngState = 12345;
+const rnd = () => (rngState = (rngState * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+const tok = () => 1000 + Math.floor(rnd() * 30000);
+const body = n => Array.from({length:n}, tok);
+
+const SYS = [151644, 8948, 198, 2610, 525, 264, 10950, 17847, 13, 151645, 198, 151644, 872, 198];
+
+function scenarios(){
+  rngState = 12345;
+  return {
+    prefix: {
+      title: "Shared system prompt",
+      desc: "Four requests carry the same 14-token preamble. Watch can_allocate() return cached blocks and ref_count climb instead of the pool draining.",
+      cfg: {blockSize:4, numBlocks:44, maxNumBatchedTokens:48, maxNumSeqs:6},
+      reqs: [
+        {arrival:0, prompt:[...SYS, ...body(6)], maxTokens:22},
+        {arrival:2, prompt:[...SYS, ...body(9)], maxTokens:20},
+        {arrival:5, prompt:[...SYS, ...body(4)], maxTokens:26},
+        {arrival:9, prompt:[...SYS, ...body(11)], maxTokens:18},
+      ],
+    },
+    preempt: {
+      title: "Pool exhaustion → preemption",
+      desc: "A deliberately tiny pool. Decoding sequences keep appending blocks until can_append() fails and the scheduler evicts the newest sequence back to the queue.",
+      cfg: {blockSize:4, numBlocks:22, maxNumBatchedTokens:48, maxNumSeqs:6},
+      reqs: [
+        {arrival:0, prompt:body(13), maxTokens:26},
+        {arrival:0, prompt:body(10), maxTokens:24},
+        {arrival:1, prompt:body(15), maxTokens:22},
+        {arrival:3, prompt:body(9),  maxTokens:28},
+        {arrival:6, prompt:body(12), maxTokens:20},
+      ],
+    },
+    chunked: {
+      title: "Chunked prefill",
+      desc: "One long prompt against a 12-token batch budget. Only the head-of-line sequence may be split, so it enters the batch in slices across several steps.",
+      cfg: {blockSize:4, numBlocks:46, maxNumBatchedTokens:12, maxNumSeqs:6},
+      reqs: [
+        {arrival:0, prompt:body(38), maxTokens:16},
+        {arrival:1, prompt:body(10), maxTokens:18},
+        {arrival:2, prompt:body(7),  maxTokens:20},
+      ],
+    },
+    continuous: {
+      title: "Continuous batching",
+      desc: "Requests arrive while others are mid-generation. Each joins the very next step — the batch never drains and refills.",
+      cfg: {blockSize:4, numBlocks:52, maxNumBatchedTokens:48, maxNumSeqs:6},
+      reqs: [
+        {arrival:0,  prompt:body(11), maxTokens:34},
+        {arrival:4,  prompt:body(8),  maxTokens:30},
+        {arrival:9,  prompt:body(14), maxTokens:26},
+        {arrival:15, prompt:body(9),  maxTokens:24},
+        {arrival:22, prompt:body(12), maxTokens:20},
+        {arrival:29, prompt:body(7),  maxTokens:18},
+      ],
+    },
+  };
+}
+
+/* ========================================================================
+   Trace recorder — snapshot per engine step
+   ===================================================================== */
+
+function runTrace(scn){
+  const cfg = scn.cfg;
+  const sched = new Scheduler(cfg);
+  const seqs = scn.reqs.map((r, i) => new Seq(i, r.prompt, r.maxTokens, r.arrival, cfg.blockSize));
+  const pending = seqs.slice();
+  const frames = [];
+  let promptTokens = 0;
+
+  for (let step = 0; step < 400; step++){
+    while (pending.length && pending[0].arrival <= step){
+      const s = pending.shift();
+      promptTokens += s.numPromptTokens;
+      sched.add(s);
+    }
+    if (sched.isFinished() && !pending.length) break;
+    if (sched.isFinished()) continue;
+
+    const {seqs:batch, isPrefill, notes, chunkedIds} = sched.schedule();
+    if (!batch.length) continue;
+
+    const batchSnap = batch.map(s => ({
+      id:s.id, tokens:s.numScheduledTokens, chunked:chunkedIds.has(s.id),
+    }));
+    sched.postprocess(batch, batch.map(() => tok()), isPrefill);
+
+    // pool snapshot
+    const owners = new Map();
+    for (const s of seqs){
+      if (s.status === "finished") continue;
+      for (const bid of s.blockTable){
+        if (!owners.has(bid)) owners.set(bid, []);
+        if (!owners.get(bid).includes(s.id)) owners.get(bid).push(s.id);
+      }
+    }
+    const blocks = sched.bm.blocks.map(b => ({
+      id:b.id, ref:b.ref, owners:owners.get(b.id) || [],
+      hashed:b.hash !== null, tokens:b.tokens.slice(0, 4),
+      free:!sched.bm.used.has(b.id),
+    }));
+
+    const rowState = {};
+    const inBatch = new Set(batch.map(s => s.id));
+    const evicted = new Set(notes.filter(n => n.k === "evict").map(n => n.seq));
+    for (const s of seqs){
+      if (evicted.has(s.id)) rowState[s.id] = "evict";
+      else if (s.status === "finished") rowState[s.id] = "done";
+      else if (inBatch.has(s.id)) rowState[s.id] = isPrefill ? "prefill" : "decode";
+      else if (s.arrival > step) rowState[s.id] = "unborn";
+      else rowState[s.id] = "waiting";
+    }
+
+    frames.push({
+      step: frames.length,
+      phase: isPrefill ? "prefill" : "decode",
+      batch: batchSnap,
+      budget: cfg.maxNumBatchedTokens,
+      blocks,
+      blockTables: Object.fromEntries(seqs.map(s => [s.id, s.blockTable.slice()])),
+      seqMeta: Object.fromEntries(seqs.map(s => [s.id, {
+        numTokens:s.numTokens, numPrompt:s.numPromptTokens,
+        numCached:s.numCachedTokens, status:s.status, maxTokens:s.maxTokens,
+      }])),
+      rowState,
+      used: sched.bm.used.size,
+      total: cfg.numBlocks,
+      running: sched.running.length,
+      waiting: sched.waiting.length,
+      preemptions: sched.preemptions,
+      reuse: promptTokens ? sched.bm.reusedTokens / promptTokens : 0,
+      notes,
+    });
+  }
+  return {frames, seqs, cfg};
+}
+
+/* ========================================================================
+   View
+   ===================================================================== */
+
+const $ = id => document.getElementById(id);
+const SCN = scenarios();
+let trace = null, cur = 0, playing = false, speed = 240, timer = null, selSeq = 0, selBlock = null;
+
+function cssVar(n){ return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+function seqColor(i){ return cssVar("--seq" + (i % 6)); }
+
+/* --- scenario select --- */
+const sel = $("scenario");
+for (const [k, v] of Object.entries(SCN)){
+  const o = document.createElement("option");
+  o.value = k; o.textContent = v.title; sel.appendChild(o);
+}
+sel.value = "prefix";
+sel.addEventListener("change", () => load(sel.value));
+
+function load(key){
+  const scn = SCN[key];
+  trace = runTrace(scn);
+  $("scnTitle").textContent = scn.title + " —";
+  $("scnDesc").textContent = scn.desc;
+  $("poolSrc").textContent = `${scn.cfg.numBlocks} blocks × ${scn.cfg.blockSize} tokens`;
+  $("scrub").max = trace.frames.length - 1;
+  selSeq = 0; selBlock = null;
+  buildPool(scn.cfg.numBlocks);
+  buildSeqPick();
+  sizeTimeline();
+  // open mid-action, paused, so the first frame is already populated
+  seek(Math.floor(trace.frames.length * 0.42));
+}
+
+/* --- pool grid --- */
+const POOL_COLS = 11, CELL = 30, PAD = 5;
+function buildPool(n){
+  const svg = $("pool");
+  const rows = Math.ceil(n / POOL_COLS);
+  const w = POOL_COLS * (CELL + PAD) - PAD, h = rows * (CELL + PAD) - PAD;
+  svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+  svg.style.maxHeight = (h * 1.55) + "px";
+  svg.innerHTML = "";
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  defs.innerHTML = `<pattern id="sh" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="6" height="6" fill="none"></rect>
+      <line x1="0" y1="0" x2="0" y2="6" stroke="#fff" stroke-opacity="0.55" stroke-width="2.5"></line>
+    </pattern>`;
+  svg.appendChild(defs);
+  for (let i = 0; i < n; i++){
+    const x = (i % POOL_COLS) * (CELL + PAD), y = Math.floor(i / POOL_COLS) * (CELL + PAD);
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.setAttribute("transform", `translate(${x},${y})`);
+    g.style.cursor = "pointer";
+    g.dataset.bid = i;
+    g.innerHTML =
+      `<rect class="cell-body" width="${CELL}" height="${CELL}" rx="3" fill="${cssVar("--free")}"></rect>
+       <rect class="cell-hatch" width="${CELL}" height="${CELL}" rx="3" fill="url(#sh)" opacity="0"></rect>
+       <rect class="cell-ring" width="${CELL}" height="${CELL}" rx="3" fill="none" stroke="none" stroke-width="2"></rect>
+       <text class="cell-id" x="${CELL/2}" y="${CELL/2+3.5}" text-anchor="middle"
+             font-family="IBM Plex Mono, monospace" font-size="9.5" fill="${cssVar("--ink-3")}">${i}</text>
+       <text class="cell-ref" x="${CELL-3}" y="9" text-anchor="end"
+             font-family="IBM Plex Mono, monospace" font-size="8" font-weight="600" fill="#fff" opacity="0"></text>`;
+    g.addEventListener("click", () => { selBlock = i; render(); });
+    svg.appendChild(g);
+  }
+}
+
+function paintPool(f){
+  const svg = $("pool");
+  f.blocks.forEach(b => {
+    const g = svg.querySelector(`g[data-bid="${b.id}"]`);
+    if (!g) return;
+    const body = g.querySelector(".cell-body");
+    const hatch = g.querySelector(".cell-hatch");
+    const idT = g.querySelector(".cell-id");
+    const refT = g.querySelector(".cell-ref");
+    const ring = g.querySelector(".cell-ring");
+    if (b.free){
+      body.setAttribute("fill", cssVar("--free"));
+      body.setAttribute("fill-opacity", "0.45");
+      idT.setAttribute("fill", cssVar("--ink-3"));
+      hatch.setAttribute("opacity", "0");
+      refT.setAttribute("opacity", "0");
+    } else {
+      const owner = b.owners.length ? b.owners[0] : 0;
+      body.setAttribute("fill", seqColor(owner));
+      body.setAttribute("fill-opacity", b.hashed ? "1" : "0.42");
+      idT.setAttribute("fill", b.hashed ? "rgba(255,255,255,.85)" : cssVar("--ink-2"));
+      hatch.setAttribute("opacity", b.ref > 1 ? "1" : "0");
+      refT.textContent = b.ref > 1 ? "×" + b.ref : "";
+      refT.setAttribute("opacity", b.ref > 1 ? "1" : "0");
+    }
+    const isSel = selBlock === b.id;
+    const owned = b.owners.includes(selSeq);
+    ring.setAttribute("stroke", isSel ? cssVar("--ink") : owned ? cssVar("--accent") : "none");
+    ring.setAttribute("stroke-opacity", isSel ? "1" : owned ? "0.85" : "0");
+  });
+
+  const b = selBlock !== null ? f.blocks[selBlock] : null;
+  $("iId").textContent = b ? "#" + b.id : "—";
+  $("iRef").textContent = b ? b.ref : "—";
+  $("iOwn").textContent = b ? (b.owners.length ? b.owners.map(i => "seq" + i).join(", ") : "—") : "—";
+  $("iTok").textContent = b ? (b.tokens.length ? b.tokens.join("  ") : b.free ? "free" : "allocated, unfilled") : "click a block to inspect";
+}
+
+/* --- sequence chips --- */
+function buildSeqPick(){
+  const el = $("seqPick"); el.innerHTML = "";
+  trace.seqs.forEach(s => {
+    const b = document.createElement("button");
+    b.className = "chip"; b.dataset.sid = s.id;
+    b.setAttribute("aria-pressed", String(s.id === selSeq));
+    b.innerHTML = `<i class="sw" style="background:${seqColor(s.id)}"></i>seq${s.id}`;
+    b.addEventListener("click", () => { selSeq = s.id; render(); });
+    el.appendChild(b);
+  });
+}
+
+/* --- panels --- */
+function render(){
+  const f = trace.frames[cur];
+  if (!f) return;
+
+  $("stepNow").textContent = f.step;
+  $("stepTot").textContent = "/" + (trace.frames.length - 1);
+  $("scrub").value = cur;
+  const pill = $("phasePill");
+  pill.textContent = f.phase; pill.className = "phase " + f.phase;
+
+  // metrics
+  const util = f.used / f.total;
+  $("mKv").innerHTML = `${Math.round(util*100)}<small>%</small>`;
+  const bar = $("mKvBar");
+  bar.style.width = (util*100) + "%";
+  bar.className = util > 0.85 ? "warn" : "";
+  $("mHit").innerHTML = `${Math.round(f.reuse*100)}<small>%</small>`;
+  $("mHitBar").style.width = (f.reuse*100) + "%";
+  $("mRun").textContent = f.running;
+  $("mWait").textContent = f.waiting;
+  $("mPre").textContent = f.preemptions;
+  $("mPreWrap").classList.toggle("alert", f.preemptions > 0);
+  const used = f.batch.reduce((a, b) => a + b.tokens, 0);
+  $("mTok").innerHTML = `${used}<small>/${f.budget}</small>`;
+
+  // why banner
+  const why = $("why"), tag = why.querySelector(".tag"), txt = $("whyText");
+  const ev = f.notes.find(n => n.k === "evict"), bl = f.notes.find(n => n.k === "blocks"),
+        ck = f.notes.find(n => n.k === "chunk"), ht = f.notes.find(n => n.k === "hit"),
+        bg = f.notes.find(n => n.k === "budget");
+  why.className = "why";
+  if (ev){
+    why.classList.add("evict"); tag.textContent = "preempt";
+    txt.innerHTML = `Pool exhausted — <span class="mono">seq${ev.seq}</span> evicted, its blocks freed, requeued at the head of <span class="mono">waiting</span>. Its KV must be recomputed.`;
+  } else if (bl){
+    why.classList.add("block"); tag.textContent = "held back";
+    txt.innerHTML = `<span class="mono">seq${bl.seq}</span> cannot admit: needs <span class="mono">${bl.need}</span> blocks, only <span class="mono">${bl.free}</span> free.`;
+  } else if (ck){
+    why.classList.add("block"); tag.textContent = "chunked";
+    txt.innerHTML = `<span class="mono">seq${ck.seq}</span> prefills in slices — <span class="mono">${ck.took}</span> of <span class="mono">${ck.of}</span> remaining tokens fit this step's budget.`;
+  } else if (ht){
+    why.classList.add("hit"); tag.textContent = "cache hit";
+    txt.innerHTML = `<span class="mono">seq${ht.seq}</span> reused <span class="mono">${ht.blocks}</span> cached prefix block${ht.blocks>1?"s":""} — that KV is never recomputed, only <span class="mono">ref_count</span> increments.`;
+  } else if (bg){
+    why.classList.add("block"); tag.textContent = "budget";
+    txt.innerHTML = `<span class="mono">seq${bg.seq}</span> waits a step: <span class="mono">${bg.want ?? "?"}</span> tokens needed, <span class="mono">${bg.left ?? 0}</span> left in this batch.`;
+  } else {
+    tag.textContent = f.phase;
+    txt.textContent = f.phase === "decode"
+      ? `${f.batch.length} sequence${f.batch.length>1?"s":""} each advance one token in a single fused forward pass.`
+      : `Prefilling ${f.batch.length} sequence${f.batch.length>1?"s":""}.`;
+  }
+
+  // batch bar
+  const bb = $("budgetBar"); bb.innerHTML = "";
+  f.batch.forEach(b => {
+    const d = document.createElement("div");
+    d.className = "slab" + (b.chunked ? " chunked" : "");
+    d.style.flex = `${b.tokens} 0 0`;
+    d.style.background = seqColor(b.id);
+    d.textContent = b.tokens >= 2 ? b.tokens : "";
+    d.title = `seq${b.id} · ${b.tokens} tokens`;
+    bb.appendChild(d);
+  });
+  const slackN = f.budget - used;
+  if (slackN > 0){
+    const s = document.createElement("div");
+    s.style.flex = `${slackN} 0 0`;
+    bb.appendChild(s);
+  }
+  $("budUsed").textContent = `${used} tok scheduled`;
+  $("budCap").textContent = `max_num_batched_tokens ${f.budget}`;
+
+  const rows = $("batchRows"); rows.innerHTML = "";
+  if (!f.batch.length) rows.innerHTML = `<div class="empty">no sequences scheduled</div>`;
+  f.batch.forEach(b => {
+    const m = f.seqMeta[b.id];
+    const r = document.createElement("div");
+    r.className = "brow";
+    r.innerHTML =
+      `<i class="sw" style="background:${seqColor(b.id)}"></i>
+       <span class="nm">seq${b.id}</span>
+       <span class="kind${b.chunked ? " chunk" : ""}">${f.phase === "prefill" ? (b.chunked ? "chunk" : "prefill") : "decode"}</span>
+       <span style="color:var(--ink-3)">${m.numTokens - m.numPrompt}/${m.maxTokens} out</span>
+       <span class="n">${b.tokens} tok</span>`;
+    r.style.cursor = "pointer";
+    r.addEventListener("click", () => { selSeq = b.id; render(); });
+    rows.appendChild(r);
+  });
+
+  // chips
+  document.querySelectorAll("#seqPick .chip").forEach(c => {
+    const id = +c.dataset.sid;
+    c.setAttribute("aria-pressed", String(id === selSeq));
+    c.classList.toggle("gone", f.seqMeta[id].status === "finished");
+  });
+
+  // page table
+  const pt = $("ptable"); pt.innerHTML = "";
+  const table = f.blockTables[selSeq] || [];
+  const meta = f.seqMeta[selSeq];
+  if (!table.length){
+    pt.innerHTML = `<div class="empty">seq${selSeq} holds no blocks — ${meta.status === "finished" ? "finished, all blocks returned to the pool" : "queued, nothing allocated yet"}.</div>`;
+  } else {
+    const fillingIdx = Math.floor(meta.numCached / trace.cfg.blockSize);
+    table.forEach((pid, li) => {
+      const blk = f.blocks[pid];
+      const tokensHere = Math.min(trace.cfg.blockSize, Math.max(0, meta.numTokens - li * trace.cfg.blockSize));
+      const r = document.createElement("div");
+      r.className = "prow" + (li === fillingIdx ? " filling" : "");
+      r.innerHTML =
+        `<span class="lg">L${li}</span><span class="ar">→</span>
+         <span class="ph" style="color:${seqColor(selSeq)}">#${pid}</span>
+         <span class="meta">${tokensHere}/${trace.cfg.blockSize} tok${blk.ref > 1 ? ` · <span class="shared">shared ×${blk.ref}</span>` : ""}</span>`;
+      r.addEventListener("click", () => { selBlock = pid; render(); });
+      pt.appendChild(r);
+    });
+  }
+
+  paintPool(f);
+  drawTimeline();
+}
+
+/* --- timeline --- */
+const ROW_H = 17, LBL_W = 46, TOP = 6;
+function sizeTimeline(){
+  const c = $("timeline");
+  const w = c.parentElement.clientWidth;
+  const h = TOP * 2 + trace.seqs.length * ROW_H;
+  const dpr = window.devicePixelRatio || 1;
+  c.width = w * dpr; c.height = h * dpr;
+  c.style.width = w + "px"; c.style.height = h + "px";
+  c.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function drawTimeline(){
+  const c = $("timeline"), g = c.getContext("2d");
+  const W = c.clientWidth, H = c.clientHeight;
+  const n = trace.frames.length;
+  const bw = Math.max(1.5, (W - LBL_W - 6) / n);
+  g.clearRect(0, 0, W, H);
+
+  const inkFaint = cssVar("--sunken"), ink2 = cssVar("--ink-2"), ink3 = cssVar("--ink-3");
+  trace.seqs.forEach((s, ri) => {
+    const y = TOP + ri * ROW_H;
+    g.fillStyle = ink3;
+    g.font = '10px "IBM Plex Mono", monospace';
+    g.textBaseline = "middle";
+    g.fillText("seq" + s.id, 2, y + ROW_H / 2);
+    g.fillStyle = inkFaint;
+    g.fillRect(LBL_W, y + 3, W - LBL_W - 4, ROW_H - 6);
+
+    for (let i = 0; i < n; i++){
+      const st = trace.frames[i].rowState[s.id];
+      if (st === "unborn" || st === "done") continue;
+      const x = LBL_W + i * bw;
+      if (st === "waiting"){
+        g.fillStyle = cssVar("--free");
+        g.globalAlpha = 0.65;
+        g.fillRect(x, y + 6, Math.max(bw - 0.4, 1), ROW_H - 12);
+        g.globalAlpha = 1;
+      } else if (st === "prefill"){
+        g.fillStyle = seqColor(s.id);
+        g.globalAlpha = 0.5;
+        g.fillRect(x, y + 3, Math.max(bw - 0.4, 1), ROW_H - 6);
+        g.globalAlpha = 1;
+      } else if (st === "decode"){
+        g.fillStyle = seqColor(s.id);
+        g.fillRect(x, y + 3, Math.max(bw - 0.4, 1), ROW_H - 6);
+      } else if (st === "evict"){
+        g.fillStyle = cssVar("--danger");
+        g.fillRect(x, y + 1, Math.max(bw, 2), ROW_H - 2);
+      }
+    }
+    if (ri === selSeq){
+      g.strokeStyle = ink2; g.lineWidth = 1;
+      g.strokeRect(LBL_W - 0.5, y + 2.5, W - LBL_W - 3, ROW_H - 5);
+    }
+  });
+
+  // cursor
+  const cx = LBL_W + cur * bw + bw / 2;
+  g.strokeStyle = cssVar("--accent"); g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(cx, 0); g.lineTo(cx, H); g.stroke();
+  g.fillStyle = cssVar("--accent");
+  g.beginPath(); g.moveTo(cx - 3.5, 0); g.lineTo(cx + 3.5, 0); g.lineTo(cx, 5); g.fill();
+}
+$("timeline").addEventListener("click", e => {
+  const r = e.currentTarget.getBoundingClientRect();
+  const n = trace.frames.length;
+  const bw = Math.max(1.5, (r.width - LBL_W - 6) / n);
+  const i = Math.round((e.clientX - r.left - LBL_W) / bw);
+  const ri = Math.floor((e.clientY - r.top - TOP) / ROW_H);
+  if (ri >= 0 && ri < trace.seqs.length) selSeq = ri;
+  seek(Math.max(0, Math.min(n - 1, i)));
+});
+
+/* --- transport --- */
+function seek(i){
+  cur = Math.max(0, Math.min(trace.frames.length - 1, i));
+  render();
+}
+function setPlaying(p){
+  playing = p;
+  $("playIcon").innerHTML = p
+    ? '<path d="M4 3h3v10H4zM9 3h3v10H9z"></path>'
+    : '<path d="M4 3l9 5-9 5z"></path>';
+  clearInterval(timer);
+  if (p) timer = setInterval(() => {
+    if (cur >= trace.frames.length - 1){ setPlaying(false); return; }
+    seek(cur + 1);
+  }, speed);
+}
+$("bPlay").addEventListener("click", () => {
+  if (!playing && cur >= trace.frames.length - 1) cur = 0;
+  setPlaying(!playing);
+});
+$("bNext").addEventListener("click", () => { setPlaying(false); seek(cur + 1); });
+$("bPrev").addEventListener("click", () => { setPlaying(false); seek(cur - 1); });
+$("bFirst").addEventListener("click", () => { setPlaying(false); seek(0); });
+$("bLast").addEventListener("click", () => { setPlaying(false); seek(trace.frames.length - 1); });
+$("scrub").addEventListener("input", e => { setPlaying(false); seek(+e.target.value); });
+document.querySelectorAll(".speeds button").forEach(b => {
+  b.addEventListener("click", () => {
+    speed = +b.dataset.sp;
+    document.querySelectorAll(".speeds button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    if (playing) setPlaying(true);
+  });
+});
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "SELECT" || e.target.tagName === "INPUT") return;
+  if (e.key === " "){ e.preventDefault(); $("bPlay").click(); }
+  if (e.key === "ArrowRight"){ setPlaying(false); seek(cur + 1); }
+  if (e.key === "ArrowLeft"){ setPlaying(false); seek(cur - 1); }
+});
+
+let rsz;
+window.addEventListener("resize", () => {
+  clearTimeout(rsz);
+  rsz = setTimeout(() => { sizeTimeline(); render(); }, 120);
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+  buildPool(trace.cfg.numBlocks); render();
+});
+
+load("prefix");
+</script>
+</body></html>

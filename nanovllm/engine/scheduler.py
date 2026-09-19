@@ -1,13 +1,17 @@
 from collections import deque
+from typing import TYPE_CHECKING
 
-from nanovllm.config import Config
 from nanovllm.engine.sequence import Sequence, SequenceStatus
 from nanovllm.engine.block_manager import BlockManager
+from nanovllm.viz.tracer import tracer
+
+if TYPE_CHECKING:
+    from nanovllm.config import Config
 
 
 class Scheduler:
 
-    def __init__(self, config: Config):
+    def __init__(self, config: "Config"):
         self.max_num_seqs = config.max_num_seqs
         self.max_num_batched_tokens = config.max_num_batched_tokens
         self.eos = config.eos
@@ -31,19 +35,32 @@ class Scheduler:
             seq = self.waiting[0]
             remaining = self.max_num_batched_tokens - num_batched_tokens
             if remaining == 0:
+                if tr := tracer():
+                    tr.emit("admission_blocked", reason="token_budget", seq_id=seq.seq_id,
+                            want=seq.num_tokens - seq.num_cached_tokens, left=0)
                 break
             if not seq.block_table:
                 num_cached_blocks = self.block_manager.can_allocate(seq)
                 if num_cached_blocks == -1:
+                    if tr := tracer():
+                        tr.emit("admission_blocked", reason="no_blocks", seq_id=seq.seq_id,
+                                need=seq.num_blocks, free=len(self.block_manager.free_block_ids))
                     break
                 num_tokens = seq.num_tokens - num_cached_blocks * self.block_size
             else:
                 num_tokens = seq.num_tokens - seq.num_cached_tokens
             if remaining < num_tokens and scheduled_seqs:  # only allow chunked prefill for the first seq
+                if tr := tracer():
+                    tr.emit("admission_blocked", reason="token_budget", seq_id=seq.seq_id,
+                            want=num_tokens, left=remaining)
                 break
             if not seq.block_table:
                 self.block_manager.allocate(seq, num_cached_blocks)
             seq.num_scheduled_tokens = min(num_tokens, remaining)
+            if tr := tracer():
+                tr.emit("seq_scheduled", seq_id=seq.seq_id, phase="prefill",
+                        tokens=seq.num_scheduled_tokens,
+                        chunked=seq.num_scheduled_tokens < num_tokens, of=num_tokens)
             num_batched_tokens += seq.num_scheduled_tokens
             if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens:
                 seq.status = SequenceStatus.RUNNING
@@ -67,12 +84,18 @@ class Scheduler:
                 seq.num_scheduled_tokens = 1
                 seq.is_prefill = False
                 self.block_manager.may_append(seq)
+                if tr := tracer():
+                    tr.emit("seq_scheduled", seq_id=seq.seq_id, phase="decode",
+                            tokens=1, chunked=False, of=1)
                 scheduled_seqs.append(seq)
         assert scheduled_seqs
         self.running.extendleft(reversed(scheduled_seqs))
         return scheduled_seqs, False
 
     def preempt(self, seq: Sequence):
+        if tr := tracer():
+            tr.emit("preempt", seq_id=seq.seq_id, blocks_freed=len(seq.block_table),
+                    tokens_lost=seq.num_cached_tokens)
         seq.status = SequenceStatus.WAITING
         seq.is_prefill = True
         self.block_manager.deallocate(seq)
@@ -86,7 +109,13 @@ class Scheduler:
             if is_prefill and seq.num_cached_tokens < seq.num_tokens:
                 continue
             seq.append_token(token_id)
+            if tr := tracer():
+                tr.emit("token_emitted", seq_id=seq.seq_id, token_id=token_id,
+                        index=seq.num_tokens - 1)
             if (not seq.ignore_eos and token_id == self.eos) or seq.num_completion_tokens == seq.max_tokens:
                 seq.status = SequenceStatus.FINISHED
+                if tr := tracer():
+                    tr.emit("seq_finished", seq_id=seq.seq_id,
+                            reason="eos" if token_id == self.eos else "max_tokens")
                 self.block_manager.deallocate(seq)
                 self.running.remove(seq)

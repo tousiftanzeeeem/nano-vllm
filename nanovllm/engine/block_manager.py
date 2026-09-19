@@ -1,8 +1,26 @@
 from collections import deque
-import xxhash
 import numpy as np
 
 from nanovllm.engine.sequence import Sequence
+from nanovllm.viz.tracer import tracer
+
+try:
+    import xxhash
+    _new_hasher = xxhash.xxh64
+except ModuleNotFoundError:  # keeps the visualizer runnable without the full install
+    from hashlib import blake2b
+
+    class _Blake2Hasher:
+        def __init__(self):
+            self._h = blake2b(digest_size=8)
+
+        def update(self, data):
+            self._h.update(data)
+
+        def intdigest(self):
+            return int.from_bytes(self._h.digest(), "little")
+
+    _new_hasher = _Blake2Hasher
 
 
 class Block:
@@ -34,26 +52,31 @@ class BlockManager:
 
     @classmethod
     def compute_hash(cls, token_ids: list[int], prefix: int = -1):
-        h = xxhash.xxh64()
+        h = _new_hasher()
         if prefix != -1:
             h.update(prefix.to_bytes(8, "little"))
         h.update(np.array(token_ids).tobytes())
         return h.intdigest()
 
-    def _allocate_block(self) -> int:
+    def _allocate_block(self, seq_id: int = -1) -> int:
         block_id = self.free_block_ids.popleft()
         block = self.blocks[block_id]
         assert block.ref_count == 0
-        if block.hash != -1 and self.hash_to_block_id.get(block.hash) == block_id:
+        evicted = block.hash != -1 and self.hash_to_block_id.get(block.hash) == block_id
+        if evicted:
             del self.hash_to_block_id[block.hash]
         block.reset()
         self.used_block_ids.add(block_id)
+        if tr := tracer():
+            tr.emit("block_alloc", block_id=block_id, seq_id=seq_id, evicted_cache=evicted)
         return block_id
 
     def _deallocate_block(self, block_id: int):
         assert self.blocks[block_id].ref_count == 0
         self.used_block_ids.remove(block_id)
         self.free_block_ids.append(block_id)
+        if tr := tracer():
+            tr.emit("block_free", block_id=block_id)
 
     def can_allocate(self, seq: Sequence) -> int:
         h = -1
@@ -87,9 +110,15 @@ class BlockManager:
                 self.free_block_ids.remove(block_id)
                 self.used_block_ids.add(block_id)
             seq.block_table.append(block_id)
+            if tr := tracer():
+                tr.emit("block_reuse", block_id=block_id, seq_id=seq.seq_id,
+                        logical=i, ref_count=block.ref_count)
         for i in range(num_cached_blocks, seq.num_blocks):
-            seq.block_table.append(self._allocate_block())
+            seq.block_table.append(self._allocate_block(seq.seq_id))
         seq.num_cached_tokens = num_cached_blocks * self.block_size
+        if (tr := tracer()) and num_cached_blocks:
+            tr.emit("prefix_hit", seq_id=seq.seq_id, blocks=num_cached_blocks,
+                    tokens=num_cached_blocks * self.block_size)
 
     def deallocate(self, seq: Sequence):
         for block_id in reversed(seq.block_table):
@@ -105,7 +134,11 @@ class BlockManager:
 
     def may_append(self, seq: Sequence):
         if len(seq) % self.block_size == 1:
-            seq.block_table.append(self._allocate_block())
+            block_id = self._allocate_block(seq.seq_id)
+            seq.block_table.append(block_id)
+            if tr := tracer():
+                tr.emit("block_append", seq_id=seq.seq_id, block_id=block_id,
+                        logical=len(seq.block_table) - 1)
 
     def hash_blocks(self, seq: Sequence):
         start = seq.num_cached_tokens // self.block_size
@@ -118,3 +151,5 @@ class BlockManager:
             h = self.compute_hash(token_ids, h)
             block.update(h, token_ids)
             self.hash_to_block_id[h] = block.block_id
+            if tr := tracer():
+                tr.emit("block_hashed", block_id=block.block_id, seq_id=seq.seq_id, logical=i)

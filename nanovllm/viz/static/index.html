@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nano-vllm · Paged Attention Scope</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="masthead">
+  <h1>Paged Attention Scope</h1>
+  <div class="sub">One request, one step at a time — through the real nano-vllm scheduler</div>
+  <div class="repo mono" id="engineTag">—</div>
+</div>
+
+<!-- ───────────────────────── run form ───────────────────────── -->
+<section class="panel runbar">
+  <div class="panel-hd"><h2>Request</h2><div class="src" id="modelHint"></div></div>
+  <div class="panel-bd runform">
+    <label class="field wide">
+      <span class="lab">Prompt</span>
+      <textarea id="prompt" rows="2" spellcheck="false">Explain paged attention in one sentence.</textarea>
+    </label>
+
+    <label class="field">
+      <span class="lab">Model</span>
+      <select id="model"></select>
+    </label>
+
+    <div class="params">
+      <label class="field num"><span class="lab">max tokens</span><input id="maxTokens" type="number" value="24" min="1" max="256"></label>
+      <label class="field num"><span class="lab">block size</span><input id="blockSize" type="number" value="4" min="1" max="64"></label>
+      <label class="field num"><span class="lab">pool blocks</span><input id="numBlocks" type="number" value="24" min="2" max="132"></label>
+      <label class="field num"><span class="lab">batch budget</span><input id="budget" type="number" value="8" min="1" max="512"></label>
+    </div>
+
+    <button id="run" class="runbtn">Trace request</button>
+  </div>
+  <div class="formnote" id="formNote"></div>
+  <div class="formnote realnote" id="realNote" hidden>
+    <span><b>Real model.</b> <code>block_size</code> is fixed at 256 because the paged attention kernel requires it,
+    so a short request lives in a single block and never pages. Generate several hundred tokens (or paste a long prompt)
+    to watch <code>may_append()</code> add pages. The pool is capped to the blocks shown; the GPU allocates far more.</span>
+  </div>
+</section>
+
+<!-- ───────────────────────── transport ───────────────────────── -->
+<div class="transport" id="transport" hidden>
+  <button class="tbtn" id="bFirst" title="First step" aria-label="First step"><svg viewBox="0 0 16 16"><path d="M4 3h2v10H4zM13 3v10L6 8z"/></svg></button>
+  <button class="tbtn" id="bPrev" title="Previous step" aria-label="Previous step"><svg viewBox="0 0 16 16"><path d="M11 3v10L4 8z"/></svg></button>
+  <button class="tbtn play" id="bPlay" title="Play / pause" aria-label="Play or pause"><svg id="playIcon" viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z"/></svg></button>
+  <button class="tbtn" id="bNext" title="Next step" aria-label="Next step"><svg viewBox="0 0 16 16"><path d="M5 3l7 5-7 5z"/></svg></button>
+  <button class="tbtn" id="bLast" title="Last step" aria-label="Last step"><svg viewBox="0 0 16 16"><path d="M10 3h2v10h-2zM3 3v10l7-5z"/></svg></button>
+
+  <div class="stepread">step <b id="stepNow">0</b><span id="stepTot">/0</span></div>
+  <span class="phase decode" id="phasePill">decode</span>
+  <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Scrub through engine steps">
+  <div class="speeds" role="group" aria-label="Playback speed">
+    <button data-sp="2000" aria-pressed="false">.1×</button>
+    <button data-sp="960" aria-pressed="false">.25×</button>
+    <button data-sp="480" aria-pressed="true">.5×</button>
+    <button data-sp="240" aria-pressed="false">1×</button>
+    <button data-sp="70" aria-pressed="false">4×</button>
+  </div>
+</div>
+
+<div id="scope" hidden>
+
+  <div class="metrics">
+    <div class="metric"><div class="k">KV pool</div><div class="v" id="mKv">—</div><div class="meter"><i id="mKvBar" style="width:0"></i></div></div>
+    <div class="metric"><div class="k">Blocks held</div><div class="v" id="mBlocks">—</div></div>
+    <div class="metric"><div class="k">Tokens</div><div class="v" id="mTokens">—</div></div>
+    <div class="metric"><div class="k">Phase</div><div class="v" id="mPhase">—</div></div>
+    <div class="metric" id="mPreWrap"><div class="k">Preemptions</div><div class="v" id="mPre">—</div></div>
+    <div class="metric"><div class="k">Step latency</div><div class="v" id="mLat">—</div></div>
+  </div>
+
+  <div class="why" id="why"><span class="tag">idle</span><span id="whyText">Press play.</span></div>
+
+  <!-- token tape: the centrepiece for a single request -->
+  <section class="panel">
+    <div class="panel-hd">
+      <h2>Token tape → logical blocks</h2>
+      <div class="src">prompt tokens laid into fixed-size pages, then one token appended per decode step</div>
+    </div>
+    <div class="panel-bd">
+      <div class="tape" id="tape"></div>
+      <div class="tapekey">
+        <span><i class="k-pending"></i>not yet computed</span>
+        <span><i class="k-active"></i>computing this step</span>
+        <span><i class="k-cached"></i>KV cached</span>
+        <span><i class="k-gen"></i>generated</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="stage">
+    <section class="panel">
+      <div class="panel-hd"><h2>KV cache pool</h2><div class="src" id="poolSrc"></div></div>
+      <div class="panel-bd">
+        <div class="poolwrap"><svg id="pool" role="img" aria-label="KV cache block pool"></svg></div>
+        <div class="poolfoot">
+          <span><i style="background:var(--free)"></i>free</span>
+          <span><i style="background:var(--seq0)"></i>held by this request</span>
+          <span><i class="hatch"></i>shared · ref_count &gt; 1</span>
+          <span><i class="justnew"></i>allocated this step</span>
+        </div>
+        <dl class="inspector">
+          <dt>block</dt><dd id="iId">—</dd>
+          <dt>ref_count</dt><dd id="iRef">—</dd>
+          <dt>tokens</dt><dd id="iTok">click a block to inspect</dd>
+        </dl>
+      </div>
+    </section>
+
+    <div style="display:flex;flex-direction:column;gap:12px">
+      <section class="panel">
+        <div class="panel-hd"><h2>Block table</h2><div class="src">seq.block_table</div></div>
+        <div class="panel-bd"><div class="ptable" id="ptable"></div></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd"><h2>Batch this step</h2><div class="src">scheduler.schedule()</div></div>
+        <div class="panel-bd">
+          <div class="budgetbar" id="budgetBar"></div>
+          <div class="budget-legend"><span id="budUsed" class="mono">—</span><span id="budCap" class="mono">—</span></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-hd"><h2>Output so far</h2><div class="src">decoded completion</div></div>
+        <div class="panel-bd"><div class="outtext mono" id="outText"></div></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="panel">
+    <div class="panel-hd"><h2>Event log</h2><div class="src">raw tracer events emitted at this step</div></div>
+    <div class="panel-bd"><div class="evlog mono" id="evlog"></div></div>
+  </section>
+</div>
+
+<footer>
+  <span id="footNote">Start the server with <code>python -m nanovllm.viz</code>.</span>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
